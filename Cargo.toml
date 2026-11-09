@@ -1,0 +1,10 @@
+[package]
+name = "nsh-pdf-export"
+version = "0.0.1"
+edition = "2024"
+license = "MIT"
+description = "Creating PDFs from app content, and printing where the platform allows."
+repository = "https://github.com/SuperNSH/pdf-export"
+publish = false
+
+[dependencies]
