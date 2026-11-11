@@ -1,0 +1,8 @@
+{
+  "name": "nsh-pdf-export tests",
+  "id": "dev.supernsh.pdf-export.tests",
+  "version": "0.1.0",
+  "build": 1,
+  "rust": "../../crates/nsh-pdf-export",
+  "capabilities": {}
+}

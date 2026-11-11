@@ -1,3 +1,7 @@
 target/
+.refs/
+.nsh/
+node_modules/
+build.log
 .DS_Store
 Cargo.lock

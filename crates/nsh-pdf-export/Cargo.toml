@@ -1,0 +1,57 @@
+[package]
+name = "nsh-pdf-export"
+description = "Creating PDFs from app content, and printing where the platform allows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+name = "nsh_pdf_export"
+path = "src/lib.rs"
+
+[dependencies]
+nsh-core = "0.4.0"
+printpdf = { version = "0.12.8", default-features = false }
+thiserror = "2.0.21"
+# `macros` beyond the pin: the front's operation gate races `tokio::select!` on every target,
+# including the web's timer-less two-arm form.
+tokio = { version = "1.54.1", default-features = false, features = ["sync", "time", "macros"] }
+# The native class hands PDF bytes over as base64; the pin is already transitive via
+# printpdf, so it adds no version to the tree.
+base64 = "0.22.1"
+
+# Native targets: blocking platform work (spooling, the save-to-path write) runs on the
+# blocking pool. The web target keeps the base features: it has no runtime to block on.
+[target.'cfg(any(target_vendor = "apple", target_os = "android", target_os = "windows", target_os = "linux"))'.dependencies]
+tokio = { version = "1.54.1", default-features = false, features = ["rt"] }
+
+# Apple: UIPrintInteractionController prints on iOS; macOS answers NotSupported in v1. The
+# framework crates 0.3.x pair with objc2 0.6 and block2 0.6, so all of them pin one of each.
+[target.'cfg(target_vendor = "apple")'.dependencies]
+objc2 = "0.6.5"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSData", "NSError", "NSString"] }
+# `block2` unlocks the sheet's completion-handler method.
+objc2-ui-kit = { version = "0.3.2", default-features = false, features = ["std", "block2", "UIPrintInfo", "UIPrintInteractionController"] }
+block2 = "0.6.2"
+dispatch2 = "0.3.1"
+
+# Android: the JNI types the printing bridge will need; v1 answers NotSupported.
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.22.4"
+ndk-context = "0.1.1"
+libc = "0.2.191"
+
+# Windows: winspool RAW passthrough and printer discovery. `Win32_Graphics_Gdi` unlocks
+# OpenPrinterW, whose defaults carry a GDI device context type.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62.2", features = ["Win32_Graphics_Printing", "Win32_Graphics_Gdi", "Win32_Foundation"] }
+
+# Linux: libcups through hand-declared extern "C" (no -sys crate), so no dependencies here.
+
+[dev-dependencies]
+tokio = { version = "1.54.1", default-features = false, features = ["rt", "macros", "time"] }
+# The native-class tests build page sizes as raw JSON; the shipped class parses via
+# nsh_core::JsonValue instead.
+serde_json = "1.0.145"

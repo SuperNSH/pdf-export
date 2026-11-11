@@ -1,10 +1,10 @@
-[package]
-name = "nsh-pdf-export"
-version = "0.0.1"
+[workspace]
+members = ["crates/nsh-pdf-export"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
 edition = "2024"
 license = "MIT"
-description = "Creating PDFs from app content, and printing where the platform allows."
 repository = "https://github.com/SuperNSH/pdf-export"
-publish = false
-
-[dependencies]
+authors = ["hmziqrs"]
