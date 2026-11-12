@@ -9,7 +9,7 @@ None.
 1. **Reference URLs.** All five canonical URLs from the brief cloned into `.refs/` on 2026-11-09, no redirects, no corrections:
    `DavBfr/dart_pdf` (the `printing` package lives at the repo root, not `packages/printing`),
    `christopherdro/react-native-html-to-pdf`, `fschutt/printpdf`, `longbridge/nsh`, `SuperNSH/biometrics`.
-2. **NSH version.** NSH 0.4.0, as biometrics pins in CI. The installed CLI and `nsh-core = "0.4.0"` match.
+2. **NSH version.** NSH 0.5.0 (moved from 0.4.0 on 2026-11-12). The CLI CI installs (`NSH_VERSION: v0.5.0`) and `nsh-core = "0.5.0"` match.
 3. **Library choice.** `printpdf = { version = "0.12.8", default-features = false }` for PDF creation.
    The default `html` feature pulls the azul layout engine and fontconfig; the ops-based API
    (`PdfDocument` + `PdfPage::new` + `Op` text items + `save`) needs none of that. `convert_html`
