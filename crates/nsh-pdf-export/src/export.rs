@@ -331,17 +331,16 @@ const LEADING_PT: f32 = 16.8;
 /// The empty paper around every page's text, in millimetres.
 const MARGIN_MM: f32 = 15.0;
 
-/// Lays `source` out as PDF bytes through printpdf's ops-based API, the engine under every
-/// bridge's `create_pdf` and `save_pdf`.
+/// Lays `source` out as a printpdf document, the shared body of both save paths.
 ///
 /// Font bytes are required: none is [`ErrorKind::FontNotFound`], bytes no font parser reads are
 /// [`ErrorKind::FontInvalid`]. Nothing else about the source is checked here; [`PdfExport`]
 /// validates before a backend is called.
-pub(crate) async fn build_pdf(
+fn layout_document(
     source: &PdfSource,
     options: &ExportOptions,
     font: Option<&[u8]>,
-) -> Result<Vec<u8>, PdfExportError> {
+) -> Result<printpdf::PdfDocument, PdfExportError> {
     let font = font.ok_or_else(|| PdfExportError::new(ErrorKind::FontNotFound))?;
     let parsed = printpdf::ParsedFont::from_bytes(font, 0, &mut Vec::new())
         .ok_or_else(|| PdfExportError::new(ErrorKind::FontInvalid))?;
@@ -380,8 +379,76 @@ pub(crate) async fn build_pdf(
             .pages
             .push(printpdf::PdfPage::new(width, height, ops));
     }
-    let bytes = document.save(&printpdf::PdfSaveOptions::default(), &mut Vec::new());
-    Ok(bytes)
+    Ok(document)
+}
+
+/// Renders `source` to PDF bytes through printpdf's ops-based API, the engine under every
+/// bridge's `create_pdf`.
+pub(crate) async fn build_pdf(
+    source: &PdfSource,
+    options: &ExportOptions,
+    font: Option<&[u8]>,
+) -> Result<Vec<u8>, PdfExportError> {
+    let document = layout_document(source, options, font)?;
+    Ok(document.save(&printpdf::PdfSaveOptions::default(), &mut Vec::new()))
+}
+
+/// Renders `source` straight into `writer`, so a save never holds the serialized PDF whole
+/// in memory on top of the document model.
+///
+/// printpdf discards the serializer's io result, so the writer records its own first failure
+/// and it answers as [`ErrorKind::WriteFailed`].
+pub(crate) fn write_pdf_to_writer(
+    source: &PdfSource,
+    options: &ExportOptions,
+    font: Option<&[u8]>,
+    writer: &mut dyn std::io::Write,
+) -> Result<(), PdfExportError> {
+    use std::io::Write as _;
+    let document = layout_document(source, options, font)?;
+    let mut writer = RecordingWrite {
+        inner: writer,
+        error: None,
+    };
+    document.save_writer(
+        &mut writer,
+        &printpdf::PdfSaveOptions::default(),
+        &mut Vec::new(),
+    );
+    let _ = writer.flush();
+    match writer.error {
+        Some(_) => Err(PdfExportError::new(ErrorKind::WriteFailed)),
+        None => Ok(()),
+    }
+}
+
+/// The only place a full disk or dead stream surfaces: printpdf throws the serializer's
+/// io result away, so the writer keeps the first failure itself.
+struct RecordingWrite<'a> {
+    inner: &'a mut dyn std::io::Write,
+    error: Option<std::io::Error>,
+}
+
+impl std::io::Write for RecordingWrite<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self.inner.write(buf) {
+            written @ Ok(_) => written,
+            Err(error) => {
+                self.error = Some(error);
+                Err(std::io::Error::other("recorded"))
+            }
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self.inner.flush() {
+            flushed @ Ok(_) => flushed,
+            Err(error) => {
+                self.error = Some(error);
+                Err(std::io::Error::other("recorded"))
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -468,6 +535,46 @@ mod tests {
         assert_eq!(error.code(), "ERR_PDF_EXPORT_FONT_INVALID");
     }
 
+    #[test]
+    fn write_pdf_to_writer_streams_a_real_document() {
+        let mut bytes = Vec::new();
+        write_pdf_to_writer(
+            &one_page(),
+            &ExportOptions::default(),
+            Some(TEST_FONT),
+            &mut bytes,
+        )
+        .expect("a writer that accepts bytes receives the document");
+        assert!(bytes.starts_with(b"%PDF-"));
+    }
+
+    /// Fails every write: printpdf throws the serializer's io result away, so the recording
+    /// writer is the only way a dead stream becomes a coded error.
+    struct DeadWriter;
+
+    impl std::io::Write for DeadWriter {
+        fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::other("dead"))
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Err(std::io::Error::other("dead"))
+        }
+    }
+
+    #[test]
+    fn write_pdf_to_writer_reports_the_stream_failing() {
+        let error = write_pdf_to_writer(
+            &one_page(),
+            &ExportOptions::default(),
+            Some(TEST_FONT),
+            &mut DeadWriter,
+        )
+        .expect_err("a dead stream is the write's failure");
+        assert_eq!(error.kind(), ErrorKind::WriteFailed);
+        assert_eq!(error.code(), "ERR_PDF_EXPORT_WRITE_FAILED");
+    }
+
     fn no_pages() -> PdfSource {
         PdfSource {
             kind: Default::default(),
@@ -521,6 +628,7 @@ mod tests {
             let options = ExportOptions {
                 page_size: Some(page_size),
                 title: None,
+                font: None,
             };
             let error = export
                 .create_pdf(&one_page(), &options)

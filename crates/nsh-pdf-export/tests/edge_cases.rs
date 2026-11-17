@@ -106,6 +106,7 @@ fn custom_page_size_zero_is_invalid_argument() {
             let options = ExportOptions {
                 page_size: Some(page_size),
                 title: None,
+                font: None,
             };
             let error = export
                 .create_pdf(&document(), &options)

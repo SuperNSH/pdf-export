@@ -412,6 +412,7 @@ mod tests {
         let options = ExportOptions {
             page_size: Some(crate::options::PageSize::A4),
             title: Some("Report".to_owned()),
+            font: None,
         };
         let _ = fake.create_pdf(&source, &options).await;
         let _ = fake

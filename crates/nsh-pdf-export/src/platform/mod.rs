@@ -1,6 +1,6 @@
 //! The platform backends, one per target, and the helpers they share: the save dialog and the
-//! save-to-path writer. Each bridge compiles on every host, so its refusals stay testable
-//! everywhere; a target with no bridge of its own gets [`UnsupportedBackend`].
+//! streamed save-to-path writer. Each bridge compiles on every host, so its refusals stay
+//! testable everywhere; a target with no bridge of its own gets [`UnsupportedBackend`].
 
 // Each bridge module is public so host tests construct its backend directly, as the platform
 // matrix has it; a target's own backend is the one `default_backend` hands out.
@@ -114,10 +114,12 @@ impl Backend for UnsupportedBackend {
         source: &PdfSource,
         options: &ExportOptions,
     ) -> BackendFuture<'_, Result<Vec<u8>, PdfExportError>> {
-        // The returned future may not borrow arguments, so it owns its data.
+        // The returned future may not borrow arguments, so it owns its data. The app's font
+        // when given, the crate's otherwise; the engine rejects bytes it cannot read.
         let source = source.clone();
         let options = options.clone();
-        Box::pin(async move { build_pdf(&source, &options, Some(FONT)).await })
+        let font = options.font.clone();
+        Box::pin(async move { build_pdf(&source, &options, font.as_deref().or(Some(FONT))).await })
     }
 
     fn save_pdf(
@@ -130,9 +132,9 @@ impl Backend for UnsupportedBackend {
         let source = source.clone();
         let options = options.clone();
         let path = path.to_path_buf();
+        let font = options.font.clone();
         Box::pin(async move {
-            let bytes = build_pdf(&source, &options, Some(FONT)).await?;
-            write_pdf_to_path(&bytes, &path).await
+            stream_pdf_to_path(&source, &options, font.as_deref().or(Some(FONT)), &path).await
         })
     }
 
@@ -184,21 +186,26 @@ pub(crate) async fn save_dialog_path(
         .map_err(|_| PdfExportError::new(ErrorKind::NotAvailable))
 }
 
-/// Writes `bytes` to `path`, creating missing parents. Where a runtime is running, the write
-/// goes through its blocking pool, off the async threads; with none (a bare test, the web), it
-/// runs inline. Every write failure is `WriteFailed`; a panicked pool writer is the backend's
-/// own failure.
-pub(crate) async fn write_pdf_to_path(
-    bytes: &[u8],
+/// Streams the source's PDF straight into `path`, the serialized bytes never held whole in
+/// memory on top of the document model — the answer to large documents the engine allows.
+/// Creates missing parents; where a runtime is running, the write goes through its blocking
+/// pool, off the async threads, and with none (a bare test, the web) it runs inline. Every
+/// write failure is `WriteFailed`; a panicked pool writer is the backend's own failure.
+pub(crate) async fn stream_pdf_to_path(
+    source: &PdfSource,
+    options: &ExportOptions,
+    font: Option<&[u8]>,
     path: &Path,
 ) -> Result<PathBuf, PdfExportError> {
+    let source = source.clone();
+    let options = options.clone();
+    let font = font.map(<[u8]>::to_vec);
     let path = path.to_path_buf();
-    let bytes = bytes.to_vec();
     #[cfg(not(target_arch = "wasm32"))]
     {
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             return match handle
-                .spawn_blocking(move || write_file(&path, &bytes))
+                .spawn_blocking(move || stream_to_file(&source, &options, font.as_deref(), &path))
                 .await
             {
                 Ok(written) => written,
@@ -207,18 +214,30 @@ pub(crate) async fn write_pdf_to_path(
             };
         }
     }
-    write_file(&path, &bytes)
+    stream_to_file(&source, &options, font.as_deref(), &path)
 }
 
 /// The blocking write itself; the OS error text never enters the message.
-fn write_file(path: &Path, bytes: &[u8]) -> Result<PathBuf, PdfExportError> {
+fn stream_to_file(
+    source: &PdfSource,
+    options: &ExportOptions,
+    font: Option<&[u8]>,
+    path: &Path,
+) -> Result<PathBuf, PdfExportError> {
+    use std::io::Write as _;
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty());
     if let Some(parent) = parent {
         std::fs::create_dir_all(parent).map_err(|_| PdfExportError::new(ErrorKind::WriteFailed))?;
     }
-    std::fs::write(path, bytes).map_err(|_| PdfExportError::new(ErrorKind::WriteFailed))?;
+    let file =
+        std::fs::File::create(path).map_err(|_| PdfExportError::new(ErrorKind::WriteFailed))?;
+    let mut writer = std::io::BufWriter::new(file);
+    crate::export::write_pdf_to_writer(source, options, font, &mut writer)?;
+    writer
+        .flush()
+        .map_err(|_| PdfExportError::new(ErrorKind::WriteFailed))?;
     Ok(path.to_path_buf())
 }
 
@@ -292,23 +311,49 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_pdf_to_path_creates_parents_and_reports_write_failures() {
+    async fn stream_pdf_to_path_creates_parents_and_reports_write_failures() {
         let root = std::env::temp_dir().join("nsh-pdf-export-core-write");
         let _ = std::fs::remove_dir_all(&root);
         let path = root.join("nested").join("doc.pdf");
-        let saved = write_pdf_to_path(b"%PDF-1.7", &path)
+        let saved = stream_pdf_to_path(&one_page(), &ExportOptions::default(), Some(FONT), &path)
             .await
-            .expect("the write creates its parents");
+            .expect("the stream creates its parents");
         assert_eq!(saved, path);
         assert!(std::fs::read(&path).unwrap().starts_with(b"%PDF-"));
+        assert!(
+            std::fs::metadata(&path).unwrap().len() > 1000,
+            "a real font-bearing PDF, not a stub"
+        );
 
         // A path under a file cannot be written to, whatever the platform calls the error.
         let under_file = path.join("deeper.pdf");
-        let error = write_pdf_to_path(b"%PDF-1.7", &under_file)
-            .await
-            .expect_err("the write reports itself");
+        let error = stream_pdf_to_path(
+            &one_page(),
+            &ExportOptions::default(),
+            Some(FONT),
+            &under_file,
+        )
+        .await
+        .expect_err("the write reports itself");
         assert_eq!(error.kind(), ErrorKind::WriteFailed);
         assert_eq!(error.code(), "ERR_PDF_EXPORT_WRITE_FAILED");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn the_app_font_outranks_the_crate_font() {
+        let backend = UnsupportedBackend::new();
+        // Bytes no parser reads must fail the call: the app's font is honored, not swapped
+        // for the crate's.
+        let options = ExportOptions {
+            font: Some(b"not a font".to_vec()),
+            ..ExportOptions::default()
+        };
+        let error = backend
+            .create_pdf(&one_page(), &options)
+            .await
+            .expect_err("unreadable app font bytes are the app's error");
+        assert_eq!(error.kind(), ErrorKind::FontInvalid);
+        assert_eq!(error.code(), "ERR_PDF_EXPORT_FONT_INVALID");
     }
 }

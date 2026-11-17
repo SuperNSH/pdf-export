@@ -102,6 +102,9 @@ pub struct ExportOptions {
     pub page_size: Option<PageSize>,
     /// The document's title, over the source's own.
     pub title: Option<String>,
+    /// The app's own font, as TTF/OTF bytes. The crate's vendored font when unset; bytes no
+    /// parser reads fail the call as `ERR_PDF_EXPORT_FONT_INVALID`.
+    pub font: Option<Vec<u8>>,
 }
 
 /// The options of one HTML conversion. Platforms with an HTML engine read these; v1 has none.

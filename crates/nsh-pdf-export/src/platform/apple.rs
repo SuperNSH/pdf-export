@@ -51,7 +51,10 @@ impl Backend for AppleBackend {
     ) -> BackendFuture<'_, Result<Vec<u8>, PdfExportError>> {
         let source = source.clone();
         let options = options.clone();
-        Box::pin(async move { build_pdf(&source, &options, Some(FONT)).await })
+        // The app's font when given, the crate's otherwise; the engine rejects bytes it
+        // cannot read.
+        let font = options.font.clone();
+        Box::pin(async move { build_pdf(&source, &options, font.as_deref().or(Some(FONT))).await })
     }
 
     fn save_pdf(
@@ -63,9 +66,10 @@ impl Backend for AppleBackend {
         let source = source.clone();
         let options = options.clone();
         let path = path.to_path_buf();
+        let font = options.font.clone();
         Box::pin(async move {
-            let pdf = build_pdf(&source, &options, Some(FONT)).await?;
-            super::write_pdf_to_path(&pdf, &path).await
+            super::stream_pdf_to_path(&source, &options, font.as_deref().or(Some(FONT)), &path)
+                .await
         })
     }
 

@@ -59,6 +59,77 @@ fn create_pdf_large_document_resolves() {
     });
 }
 
+/// The test's own font from disk: through the public API an app's font is just bytes.
+fn app_font() -> Vec<u8> {
+    std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/assets/export-test-font.ttf"
+    ))
+    .expect("the vendored font stands in for the app's")
+}
+
+#[test]
+fn create_pdf_with_app_font_renders() {
+    let export = PdfExport::with_default_backend();
+    let source = document(vec![PageText {
+        lines: vec![String::from("Hello PDF")],
+    }]);
+    let options = ExportOptions {
+        font: Some(app_font()),
+        ..ExportOptions::default()
+    };
+    run(async {
+        let bytes = export
+            .create_pdf(&source, &options)
+            .await
+            .expect("the app's own font renders");
+        assert!(bytes.starts_with(b"%PDF-"));
+    });
+}
+
+#[test]
+fn create_pdf_with_invalid_app_font_is_font_invalid() {
+    let export = PdfExport::with_default_backend();
+    let source = document(vec![PageText {
+        lines: vec![String::from("Hello PDF")],
+    }]);
+    let options = ExportOptions {
+        font: Some(b"not a font".to_vec()),
+        ..ExportOptions::default()
+    };
+    run(async {
+        let error = export
+            .create_pdf(&source, &options)
+            .await
+            .expect_err("unreadable app font bytes are the caller's error");
+        assert_eq!(error.kind(), nsh_pdf_export::ErrorKind::FontInvalid);
+        assert_eq!(error.code(), "ERR_PDF_EXPORT_FONT_INVALID");
+    });
+}
+
+#[test]
+fn save_pdf_streams_the_document_to_the_file() {
+    let export = PdfExport::with_default_backend();
+    let source = document(pages(200, 40));
+    let root = std::env::temp_dir().join("nsh-pdf-export-stream-save");
+    let _ = std::fs::remove_dir_all(&root);
+    let path = root.join("nested").join("doc.pdf");
+    run(async {
+        let saved = export
+            .save_pdf(&source, &ExportOptions::default(), &path)
+            .await
+            .expect("the streamed save writes the file");
+        assert_eq!(saved, path);
+    });
+    let written = std::fs::read(&path).expect("the file holds the whole document");
+    assert!(written.starts_with(b"%PDF-"));
+    assert!(
+        written.len() > 10_000,
+        "200 real pages, streamed or not, are not a stub"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[test]
 fn web_print_is_not_available() {
     let backend = WebBackend::new();

@@ -40,6 +40,8 @@ pub struct NativeExportOptions {
     pub page_size: Option<JsonValue>,
     /// The document's title, over the source's own.
     pub title: Option<String>,
+    /// The app's own font, as base64 TTF/OTF bytes.
+    pub font: Option<String>,
 }
 
 /// The options of one HTML conversion, from TSX.
@@ -245,7 +247,7 @@ fn to_source(source: NativePdfSource) -> Result<PdfSource, JsError> {
     })
 }
 
-/// Turns the TSX options into the crate's, refusing a page size it cannot read.
+/// Turns the TSX options into the crate's, refusing a page size or font it cannot read.
 fn to_export_options(options: NativeExportOptions) -> Result<ExportOptions, JsError> {
     Ok(ExportOptions {
         page_size: match options.page_size {
@@ -253,6 +255,14 @@ fn to_export_options(options: NativeExportOptions) -> Result<ExportOptions, JsEr
             Some(value) => Some(to_page_size(value)?),
         },
         title: options.title,
+        font: match options.font {
+            None => None,
+            Some(encoded) => Some(
+                STANDARD
+                    .decode(encoded)
+                    .map_err(|_| invalid("font must be base64"))?,
+            ),
+        },
     })
 }
 
@@ -349,6 +359,28 @@ mod tests {
         let (message, code) = rejection(error);
         assert_eq!(code.as_deref(), Some("ERR_PDF_EXPORT_INVALID_ARGUMENT"));
         assert!(message.contains("ERR_PDF_EXPORT_INVALID_ARGUMENT"));
+    }
+
+    #[test]
+    fn the_app_font_arrives_as_base64_bytes() {
+        let options = to_export_options(NativeExportOptions {
+            font: Some(STANDARD.encode(b"font bytes")),
+            ..NativeExportOptions::default()
+        })
+        .expect("base64 font bytes decode");
+        assert_eq!(options.font.as_deref(), Some(&b"font bytes"[..]));
+    }
+
+    #[test]
+    fn a_font_that_is_not_base64_is_refused() {
+        let error = to_export_options(NativeExportOptions {
+            font: Some("not base64 !!!".to_owned()),
+            ..NativeExportOptions::default()
+        })
+        .expect_err("undecodable font bytes are refused");
+        let (message, code) = rejection(error);
+        assert_eq!(code.as_deref(), Some("ERR_PDF_EXPORT_INVALID_ARGUMENT"));
+        assert!(message.contains("font must be base64"));
     }
 
     #[test]
