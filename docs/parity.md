@@ -61,8 +61,8 @@ none of the `html` feature's layout engine or fontconfig. `build_pdf` maps onto 
 |---|---|
 | `PdfDocument::new(name)` — `src/lib.rs` | One document per `PdfSource`; the title comes from `PdfSource.title` / `ExportOptions.title`. |
 | `PdfPage::new(Mm, Mm, ops)` — `src/ops.rs` | One page per `PageText`; the media box comes from `sizeMm(ExportOptions.pageSize)`. |
-| `Op` — `src/ops.rs` | Per page: `StartTextSection`, `SetFont { font, size: Pt }`, `EndTextSection`; per line: `SetTextCursor`, `ShowText { items: [TextItem::Text(line)] }` (`src/text.rs`). No `AddLineBreak` is emitted. Every backend embeds the same vendored external TTF (Roboto Medium, copied from printpdf's example fonts) and registers it with `add_font` → `PdfFontHandle::External`. `FontNotFound` covers a call with no font — the front API supplies none, so the bridges own the embed; `FontInvalid` covers bytes no parser reads. |
-| `PdfDocument::save(&PdfSaveOptions, &mut warnings)` — `src/lib.rs`, options in `src/serialize.rs` | Serializes the final bytes with default options (optimize, subset fonts, secure). |
+| `Op` — `src/ops.rs` | Per page: `StartTextSection`, `SetFont { font, size: Pt }`, `EndTextSection`; per line: `SetTextCursor`, `ShowText { items: [TextItem::Text(line)] }` (`src/text.rs`). No `AddLineBreak` is emitted. The app's own font rides in `ExportOptions.font` (base64 at the native boundary) and registers with `add_font` → `PdfFontHandle::External`; unset falls back to the vendored external TTF (Roboto Medium, copied from printpdf's example fonts) every backend embeds. `FontNotFound` covers a fontless engine call; `FontInvalid` covers bytes no parser reads — app-supplied or not. |
+| `PdfDocument::save(&PdfSaveOptions, &mut warnings)` — `src/lib.rs`, options in `src/serialize.rs` | Serializes with default options (optimize, subset fonts, secure). `save_pdf` goes through `save_writer` straight into the file, so the serialized bytes are never held whole on top of the document model; a stream that fails mid-write answers `WriteFailed` (printpdf discards the io result, so the writer records it). |
 
 Status: not started.
 

@@ -4,7 +4,7 @@ What this library is for, what "done" means, and the list the tests are named ag
 
 ## Goals
 
-1. **Create PDFs from app content.** The app supplies pages of text — v1 is text-only (`PdfSource { kind: "text", title, pages }`) — and the library renders them with `printpdf` 0.12.8, default features off, through the ops-based API (`PdfDocument` + `PdfPage` + `Op` text items). Creation is pure Rust, so `createPdf` and `saveToPath` work on every target the crate compiles for, web included. The engine needs font bytes: none provided is `FontNotFound`, bytes that will not parse are `FontInvalid`.
+1. **Create PDFs from app content.** The app supplies pages of text — v1 is text-only (`PdfSource { kind: "text", title, pages }`) — and the library renders them with `printpdf` 0.12.8, default features off, through the ops-based API (`PdfDocument` + `PdfPage` + `Op` text items). Creation is pure Rust, so `createPdf` and `saveToPath` work on every target the crate compiles for, web included. The engine needs font bytes: the app's own ride in `ExportOptions.font`, unset falls back to the crate's vendored font, and bytes that will not parse are `FontInvalid`.
 2. **Print where the platform allows.** iOS prints through `UIPrintInteractionController`, Windows through winspool's RAW passthrough, Linux through CUPS. macOS, Android and the web refuse with a code in v1 (`NotSupported` / `NotAvailable`), never a hang.
 3. **One API, two languages.** The Rust crate `nsh_pdf_export` at `crates/nsh-pdf-export` and the TypeScript package `nsh-pdf-export` at `packages/nsh-pdf-export` expose the same names with the same behaviour: `createPdf`, `savePdf`, `savePdfWithDialog`, `convertHtml`, `printPdf`, `listPrinters`, `cancel`, `supports`. The repo is laid out like the other SuperNSH libraries, whose shape `nsh-biometrics` set: the root `Cargo.toml` is a workspace manifest whose only member is the crate, `packages/` sits beside it, docs in `docs/`, CI in `.github/workflows/`.
 4. **Everything is testable without a device.** Platform work sits behind the `Backend` trait (`supports`, `create_pdf`, `save_pdf`, `pick_save_path`, `convert_html`, `print_pdf`, `list_printers`, `cancel`). `FakeBackend` (Rust, `fake.rs`) and `memoryBackend` (TS, `memory.ts`) script per-method outcomes, delays and a call log, so every rule below runs on every CI runner.
@@ -36,7 +36,7 @@ A behaviour counts as done when all of this holds:
   (cd packages/nsh-pdf-export && nsh test)
   ```
 
-- Every behaviour has a test in both languages, under the same name. The edge cases below are those names; the Rust tests live in `crates/nsh-pdf-export/tests/`, the TypeScript tests in `packages/nsh-pdf-export/tests/`. A test is seen to fail once before it counts.
+- Every behaviour has a test in both languages, under the same name, except where a language owns the behavior alone: cases 1–22 run identically in both, the engine-real cases 23–25 (app font rendering, its invalid-bytes refusal, the streamed save) are Rust-only because the real engine lives in the crate, and case 26 is TypeScript-only because it asserts the boundary pass-through the TS side owns. The Rust tests live in `crates/nsh-pdf-export/tests/`, the TypeScript tests in `packages/nsh-pdf-export/tests/`. A test is seen to fail once before it counts.
 - Every call resolves exactly once: a success, a coded failure, or a cancel. It never hangs and never resolves twice. One operation runs at a time per `PdfExport` instance: a second concurrent call resolves `InProgress`, the first is unaffected, and once an operation settles — any way it settles — the instance accepts the next call.
 - Failures are coded errors only: one of the twelve kinds below, each with fixed wording. No panic crosses a call, and no error message holds user data — no html, no path, no printer name.
 - Every operation is bounded. The default bound is 30 seconds; `PdfExport::with_timeout` (Rust) and `withTimeoutMs` (TS) replace it. On expiry the call resolves `Timeout` once and `cancel()` is attempted on the backend.
@@ -66,7 +66,7 @@ The native module (`nsh-pdf-export/native`) rejects with a message of the form `
 
 ## Edge cases
 
-Twenty-two named cases, grouped. The name is the test name, identical in both languages; the Rust test is in `crates/nsh-pdf-export/tests/`, the TypeScript test in `packages/nsh-pdf-export/tests/`. The number is the case's number in the contract.
+Twenty-six named cases, grouped. The name is the test name; cases 1–22 are identical in both languages, 23–25 are Rust-only (the real engine) and 26 is TypeScript-only (the boundary pass-through). The Rust test is in `crates/nsh-pdf-export/tests/`, the TypeScript test in `packages/nsh-pdf-export/tests/`. The number is the case's number in the contract.
 
 ### Arguments
 
@@ -85,6 +85,9 @@ Twenty-two named cases, grouped. The name is the test name, identical in both la
 |---|---|---|
 | 5 | `create_pdf_without_font_is_font_not_found` | Creating a PDF with no font bytes resolves `FontNotFound`. |
 | 6 | `create_pdf_with_bad_font_bytes_is_font_invalid` | Font bytes that will not parse resolve `FontInvalid`. |
+| 23 | `create_pdf_with_app_font_renders` | The app's own font in `ExportOptions.font` renders real bytes through the public API. |
+| 24 | `create_pdf_with_invalid_app_font_is_font_invalid` | App font bytes that will not parse resolve `FontInvalid` through the public API — never swapped for the crate's font. |
+| 26 | `create_pdf_with_app_font_passes_it_to_the_backend` | (TypeScript) the font bytes reach the backend untouched, as the call log shows. |
 
 ### Filesystem
 
@@ -121,5 +124,6 @@ Twenty-two named cases, grouped. The name is the test name, identical in both la
 |---|---|---|
 | 3 | `create_pdf_blank_page_is_valid_pdf` | A page with no lines still produces bytes starting `%PDF-`. |
 | 19 | `create_pdf_large_document_resolves` | 500 pages resolve with a `%PDF-` header and no hang. |
+| 25 | `save_pdf_streams_the_document_to_the_file` | A save streams the serializer straight into the file: the path resolves, the file starts `%PDF-` and holds the whole document. |
 
-The engine cases render with the test font vendored at `crates/nsh-pdf-export/assets/export-test-font.ttf` (copied from the printpdf sources in `.refs/printpdf`) and assert the output starts `%PDF-`.
+The engine cases render with the test font vendored at `crates/nsh-pdf-export/assets/export-test-font.ttf` (copied from the printpdf sources in `.refs/printpdf`) and assert the output starts `%PDF-`. Saves never hold the serialized PDF whole in memory on top of the document model — `save_pdf` writes through printpdf's serializer into the file; the model itself is still laid out in memory, which is the engine's boundary, recorded in `docs/decisions.md`.

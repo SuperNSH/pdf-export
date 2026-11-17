@@ -9,7 +9,7 @@ What it does:
 - Prints where the platform allows — iOS, Windows, Linux — and refuses with a stable code where it does not.
 - Runs one operation at a time per instance. Every call resolves exactly once: a result, a coded failure, or a cancel. Nothing hangs.
 
-[docs/goals.md](docs/goals.md) states the goals, the acceptance criteria, the twelve error kinds and the twenty-two named edge cases. [docs/decisions.md](docs/decisions.md) says why each choice was made, and [docs/parity.md](docs/parity.md) says what each API does on each platform and names the test that covers it.
+[docs/goals.md](docs/goals.md) states the goals, the acceptance criteria, the twelve error kinds and the twenty-six named edge cases. [docs/decisions.md](docs/decisions.md) says why each choice was made, and [docs/parity.md](docs/parity.md) says what each API does on each platform and names the test that covers it.
 
 ## Layout
 
@@ -61,6 +61,7 @@ const pdfExport = new PdfExport();
 function App() {
   const saveNotes = () => {
     const source = { kind: "text", title: "Notes", pages: [{ lines: ["Hello PDF"] }] };
+    // Options can carry the app's own TTF: pdfExport.savePdf(source, { font: fontBytes }, "notes.pdf").
     pdfExport.savePdf(source, undefined, "notes.pdf").then(
       (path) => console.log(path),
       (error: unknown) =>
@@ -98,7 +99,8 @@ Limits:
 
 - **v1 is text-only.** `PdfSource` carries `kind: "text"`. `convertHtml` resolves `ERR_PDF_EXPORT_NOT_SUPPORTED` on every native platform — no engine is wired in v1; `docs/parity.md` records it — and `ERR_PDF_EXPORT_NOT_AVAILABLE` on the web.
 - **macOS and Android do not print in v1.** Android's `PrintManager` needs a Java `PrintDocumentAdapter` an NSH app cannot ship; macOS printing waits for a reason to wire it.
-- **Creation needs a font.** A backend with no font bytes resolves `ERR_PDF_EXPORT_FONT_NOT_FOUND`; bytes that will not parse resolve `ERR_PDF_EXPORT_FONT_INVALID`.
+- **Fonts.** The app's own TTF/OTF bytes ride in `ExportOptions.font` (`Uint8Array`, base64 at the native boundary); unset uses the crate's vendored font, and bytes that will not parse resolve `ERR_PDF_EXPORT_FONT_INVALID`. A backend with no font at all resolves `ERR_PDF_EXPORT_FONT_NOT_FOUND`.
+- **Saves stream.** `savePdf` runs the serializer straight into the file, so the serialized PDF is never held whole on top of the document model; a stream that fails mid-write resolves `ERR_PDF_EXPORT_WRITE_FAILED`. The document model itself is still laid out in memory — the engine's boundary, recorded in `docs/decisions.md`.
 - **One operation at a time per instance.** A second concurrent call resolves `ERR_PDF_EXPORT_IN_PROGRESS` and the first is unaffected. A second instance runs a second export concurrently.
 - **Every operation is bounded.** 30 seconds by default; `withTimeoutMs` (Rust: `with_timeout`) replaces it. Expiry resolves `ERR_PDF_EXPORT_TIMEOUT`, and `cancel()` is attempted on the backend.
 - **No error message holds user data.** Not the html, not the path, not the printer name.
