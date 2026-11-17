@@ -36,6 +36,16 @@ test("create_pdf_large_document_resolves", async () => {
   expect(text(bytes)).toBe(PDF_HEADER);
 });
 
+test("create_pdf_with_app_font_passes_it_to_the_backend", async () => {
+  const backend = memoryBackend();
+  const font = new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x7f, 0x45]);
+  const pdf = new PdfExport(backend);
+  await pdf.createPdf(source(1), { font });
+  const call = backend.calls().find((call) => call.method === "createPdf");
+  if (call === undefined || call.method !== "createPdf") throw new Error("createPdf was never called");
+  expect(call.options.font).toBe(font);
+});
+
 test("web_print_is_not_available", async () => {
   // The web matrix: creation only, and every platform-only capability answers NotAvailable.
   const backend = memoryBackend({

@@ -45,6 +45,9 @@ export interface ExportOptions {
   pageSize?: PageSize;
   /** The document's title, over the source's own. */
   title?: string;
+  /** The app's own font, as TTF/OTF bytes. The crate's vendored font when unset; bytes no
+   *  parser reads fail the call as `ERR_PDF_EXPORT_FONT_INVALID`. */
+  font?: Uint8Array;
 }
 
 /** The options of one HTML conversion. */

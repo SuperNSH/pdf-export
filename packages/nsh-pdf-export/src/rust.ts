@@ -19,11 +19,11 @@ class RustBackend implements Backend {
   }
 
   createPdf(source: PdfSource, options: ExportOptions): Promise<Uint8Array> {
-    return this.settle(async () => decodeBase64(await this.native.createPdf(source, options)));
+    return this.settle(async () => decodeBase64(await this.native.createPdf(source, toNativeOptions(options))));
   }
 
   savePdf(source: PdfSource, options: ExportOptions, path: string): Promise<string> {
-    return this.settle(() => this.native.savePdf(source, options, path));
+    return this.settle(() => this.native.savePdf(source, toNativeOptions(options), path));
   }
 
   pickSavePath(suggestedName: string): Promise<string | null | undefined> {
@@ -59,6 +59,19 @@ class RustBackend implements Backend {
 }
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/** The native boundary carries the app font as base64; every other option crosses unchanged. */
+function toNativeOptions(options: ExportOptions): {
+  pageSize?: ExportOptions["pageSize"];
+  title?: string;
+  font?: string;
+} {
+  return {
+    pageSize: options.pageSize,
+    title: options.title,
+    font: options.font === undefined ? undefined : encodeBase64(options.font),
+  };
+}
 
 const VALUES = new Map<string, number>([...ALPHABET].map((character, value) => [character, value]));
 
