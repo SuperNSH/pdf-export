@@ -11,6 +11,18 @@ What it does:
 
 [docs/goals.md](docs/goals.md) states the goals, the acceptance criteria, the twelve error kinds and the twenty-six named edge cases. [docs/decisions.md](docs/decisions.md) says why each choice was made, and [docs/parity.md](docs/parity.md) says what each API does on each platform and names the test that covers it.
 
+## Install
+
+In the app's directory:
+
+```sh
+nsh add nsh-pdf-export
+```
+
+`nsh add` needs NSH main or the nightly: the 0.6.0 and 0.6.1 releases do not have it. In a Rust app, `cargo add nsh-pdf-export` works with any of them.
+
+TSX code imports from `nsh-pdf-export`.
+
 ## Layout
 
 The same shape as the other SuperNSH libraries:
@@ -28,7 +40,7 @@ Add the crate to `Cargo.toml`:
 
 ```toml
 [dependencies]
-nsh-pdf-export = { git = "https://github.com/SuperNSH/pdf-export" }
+nsh-pdf-export = "0.1"
 ```
 
 ```rust
@@ -50,7 +62,7 @@ Match `error.kind()` for the cases the app handles, such as `Cancelled` or `NoPr
 
 ## Use it in TSX
 
-List the crate under `"rust"` in the app's `nsh.json`, and add the TypeScript package from `packages/nsh-pdf-export`:
+After `nsh add nsh-pdf-export`:
 
 ```tsx
 import { mount, Text, View } from "nsh";
