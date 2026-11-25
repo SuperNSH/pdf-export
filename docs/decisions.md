@@ -9,7 +9,7 @@ None.
 1. **Reference URLs.** All five canonical URLs from the brief cloned into `.refs/` on 2026-11-09, no redirects, no corrections:
    `DavBfr/dart_pdf` (the `printing` package lives at the repo root, not `packages/printing`),
    `christopherdro/react-native-html-to-pdf`, `fschutt/printpdf`, `longbridge/nsh`, `SuperNSH/biometrics`.
-2. **NSH version.** NSH 0.6.0 (moved from 0.4.0 to 0.5.0 on 2026-11-12, to 0.5.1 on 2026-11-17, and to 0.6.0 on 2026-11-18). The CLI CI installs (`NSH_VERSION: v0.6.0`) and `nsh-core = "0.6.0"` match.
+2. **NSH version.** NSH 0.7.1 (moved from 0.4.0 to 0.5.0 on 2026-11-12, to 0.5.1 on 2026-11-17, to 0.6.0 on 2026-11-18, and to 0.7.0 on 2026-11-25). The CLI CI installs (`NSH_VERSION: v0.7.1`) and `nsh-core = "0.7.0"` (resolves to 0.7.1) match.
 3. **Library choice.** `printpdf = { version = "0.12.8", default-features = false }` for PDF creation.
    The default `html` feature pulls the azul layout engine and fontconfig; the ops-based API
    (`PdfDocument` + `PdfPage::new` + `Op` text items + `save`) needs none of that. `convert_html`
@@ -24,7 +24,7 @@ None.
 5. **Dependency licenses.** Verified from registry metadata (2026-11-17, `cargo metadata`)
    before pinning, closing the brief's research note. Every direct dependency is permissive —
    MIT, Apache-2.0, or an either/or of those with Zlib — so the crate's MIT license holds:
-   nsh-core 0.6.0 Apache-2.0; printpdf MIT (requirement `0.12.8`, lock resolves 0.12.9);
+   nsh-core 0.7.1 Apache-2.0; printpdf MIT (requirement `0.12.8`, lock resolves 0.12.9);
    thiserror, base64, serde_json (dev), jni, ndk-context, libc, windows MIT OR Apache-2.0;
    tokio, objc2, objc2-foundation, block2 MIT; objc2-ui-kit and dispatch2 Zlib OR Apache-2.0 OR MIT.
 6. **App fonts and streamed saves.** `ExportOptions.font` carries an app's own TTF/OTF bytes

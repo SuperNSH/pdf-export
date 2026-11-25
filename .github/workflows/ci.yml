@@ -73,10 +73,10 @@ jobs:
       - name: Install Linux packages
         run: sudo apt-get update && sudo apt-get install -y dbus dbus-user-session gnome-keyring libgtk-4-dev libwebkitgtk-6.0-dev clang llvm libcups2-dev
       - run: scripts/publish-crates.sh verify
-      # Only for a crate with #[native_module]; the NSH releases up to 0.6.1 have no `nsh add`.
-      - name: Install NSH nightly
+      # Only for a crate with #[native_module]; `nsh add` ships from NSH 0.7.0.
+      - name: Install NSH
         env:
-          NSH_VERSION: nightly
+          NSH_VERSION: v0.7.1
         run: |
           curl -fsSL https://raw.githubusercontent.com/SuperNSH/nsh-builds/master/install.sh | sh
           echo "$HOME/.nsh/bin" >> "$GITHUB_PATH"
@@ -130,7 +130,7 @@ jobs:
       - name: Install NSH
         if: runner.os != 'Windows'
         env:
-          NSH_VERSION: v0.6.0
+          NSH_VERSION: v0.7.1
         run: |
           curl -fsSL https://raw.githubusercontent.com/SuperNSH/nsh-builds/master/install.sh | sh
           echo "$HOME/.nsh/bin" >> "$GITHUB_PATH"
@@ -139,7 +139,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         env:
-          NSH_VERSION: v0.6.0
+          NSH_VERSION: v0.7.1
         run: |
           irm https://raw.githubusercontent.com/SuperNSH/nsh-builds/master/install.ps1 | iex
           "$env:LOCALAPPDATA\nsh\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
